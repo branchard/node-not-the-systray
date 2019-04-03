@@ -6,7 +6,7 @@
         "typecheck": "tsc --noEmit"
     },
     "dependencies": {
-        "not-the-systray": "link:.."
+        "not-the-systray": "file:.."
     },
     "devDependencies": {
         "@types/node": "^8.0.0",
