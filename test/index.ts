@@ -31,7 +31,7 @@ catchErrors(() => {
                 { id: 789, text: "Subitem Notification" },
             ]
         },
-
+        
         { separator: true },
         { id: 2, text: "Throw error" },
         { id: 3, text: "Add icon" },

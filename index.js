@@ -1,10 +1,205 @@
 const native = require('./notify_icon.node');
 
-const { NotifyIcon, Icon, Menu } = native;
+const { NotifyIcon: NativeNotifyIcon, Icon, Menu: NativeMenu } = native;
 
-module.exports = { NotifyIcon, Icon, Menu };
+let currentMenuItemId = 1;
 
-Object.defineProperties(Menu, {
+class MenuItem {
+    constructor(options){
+        this.id = currentMenuItemId++;
+        this.setProperties(options);
+    }
+
+    setProperties({text, disabled, checked, onClick, subMenuItems, ...rest}){
+        if(text !== undefined){
+            this.text = String(text);
+        }
+        
+        if(disabled !== undefined){
+            this.disabled = Boolean(disabled);
+        }
+        
+        if(checked !== undefined){
+            this.checked = Boolean(checked);
+        }
+
+        if(onClick !== undefined){
+            if(typeof onClick !== "function"){
+                throw "onClick must be undefined or a function"
+            }
+            this.onClick = onClick;
+        }
+
+        if(subMenuItems !== undefined){
+            this.subMenuItems = subMenuItems;
+        }
+
+        Object.assign(this, rest);
+    }
+
+    toNativeNotation() {
+        const nativeNotation =  { 
+            id: this.id,
+            text: this.text, 
+            disabled: this.disabled,
+            checked: this.checked,
+        };
+
+        if(this.subMenuItems !== undefined){
+            nativeNotation.items = [];
+            for (const subMenuItem of this.subMenuItems) {
+                nativeNotation.items.push(subMenuItem.toNativeNotation());
+            }
+        }
+
+        return nativeNotation;
+    }
+
+    bindNativeMenu(nativeMenu){
+        this.nativeMenu = nativeMenu;
+        if(this.subMenuItems !== undefined){
+            this.subMenuItems.forEach((subMenuItem) => {subMenuItem.bindNativeMenu(nativeMenu);});
+        }
+    }
+
+    update(newState){
+        if(this.nativeMenu === undefined){
+            throw "You must call bindNativeMenu before update this MenuItem";
+        }
+        this.setProperties(newState);
+        this.nativeMenu.update(this.id, newState);
+    }
+}
+
+class MenuSeparator {
+    toNativeNotation() {
+        return { separator: true };
+    }
+}
+
+class Menu {
+    constructor(items){
+        this.items = items;
+        this.nativeMenu;
+
+        const nativeMenuArg = [];
+
+        for (const item of items) {
+            if(item instanceof MenuItem || item instanceof MenuSeparator){
+                nativeMenuArg.push(item.toNativeNotation());
+                continue;
+            }
+            throw "Menu items must be instance of MenuItem or MenuSeparator"
+        }
+        
+        this.nativeMenu = new NativeMenu(nativeMenuArg);
+
+        // bind nativeMenu to MenuItems
+        for (const item of items) {
+            if(item instanceof MenuItem){
+                item.bindNativeMenu(this.nativeMenu);
+            }
+        }
+    }
+
+    findItemById(id){
+        // find recustively in submenu
+        const recustivelyFind = function(items){
+            for (const item of items) {
+                if(item.subMenuItems){
+                    return recustivelyFind(item.subMenuItems);
+                }
+
+                if(item.id === id){
+                    return item;
+                }
+            }
+            
+            return undefined
+        };
+        return recustivelyFind(this.items);
+    }
+
+    onSelect(event, notifyIcon){
+        // this function show menu
+        const itemId = this.nativeMenu.showSync(event.mouseX, event.mouseY);
+        if(itemId === null || itemId === 0){
+            return;
+        }
+
+        const item = this.findItemById(itemId);
+        if(item === undefined || item.onClick === undefined){
+            return;
+        }
+
+        item.onClick(new ItemClickEvent({notifyIcon}));
+    }
+}
+
+class NotifyIcon {
+    constructor(options){
+        this.setProperties(options);
+    }
+
+    onSelect(event){
+        if(event.rightButton && this.rightClickMenu !== undefined){
+            this.rightClickMenu.onSelect(event, this);
+        }else if(!event.rightButton && this.leftClickMenu !== undefined){
+            this.leftClickMenu.onSelect(event, this);
+        }else if(this.menu !== undefined){
+            this.menu.onSelect(event, this);
+        }
+    }
+
+    setProperties({ menu, leftClickMenu, rightClickMenu, icon, tooltip }){
+        if(menu !== undefined){
+            this.menu = menu;
+        }
+        
+        if(leftClickMenu !== undefined){
+            this.leftClickMenu = leftClickMenu;
+        }
+        
+        if(rightClickMenu !== undefined){
+            this.rightClickMenu = rightClickMenu;
+        }
+
+        if(icon !== undefined){
+            this.icon = icon;
+        }
+
+        if(tooltip !== undefined){
+            this.tooltip = tooltip;
+        }
+
+        if(this.nativeNotifyIcon === undefined){
+            this.nativeNotifyIcon = new NativeNotifyIcon({
+                icon: this.icon,
+                tooltip: this.tooltip,
+                onSelect: this.onSelect.bind(this),
+            });
+        }else{
+            this.nativeNotifyIcon.update({
+                icon: this.icon,
+                tooltip: this.tooltip,
+            });
+        }
+    }
+
+    update(newState){
+        this.setProperties(newState);
+    }
+}
+
+class ItemClickEvent {
+    constructor({notifyIcon}){
+        this.notifyIcon = notifyIcon;
+    }
+}
+
+module.exports = { NotifyIcon, Icon, Menu, MenuItem, MenuSeparator };
+
+Object.defineProperties(NativeMenu, {
     createTemplate: { value: createMenuTemplate, enumerable: true },
 });
 
